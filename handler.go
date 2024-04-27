@@ -60,3 +60,9 @@ func (self *ServeMux) findHandler(ctx context.Context) Handler {
 	}
 	return nil
 }
+
+func NewServerMux() *ServeMux {
+	return &ServeMux{}
+}
+
+var defaultServeMux = NewServerMux()

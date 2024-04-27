@@ -11,19 +11,39 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/gobwas/glob"
 )
 
 type Server struct {
-	Root     string
-	Handler  Handler
-	MaxDepth int
+	Root         string
+	Handler      Handler
+	MaxDepth     int
+	ErrorHandler ErrorHandler
 	// glog pattern can be provided
 	IgnoreList         []string
 	compiledIgnoreList []glob.Glob
 	watcher            *fsnotify.Watcher
+}
+
+type Handler interface {
+	ServeFSEvent(ctx context.Context) error
+}
+
+type ErrorHandler interface {
+	HandleError(err error)
+}
+
+type request struct {
+	path     string
+	size     int
+	fileType string
+	mimetype string
+	action   string
+	date     time.Time
+	hostname string
 }
 
 func (self *Server) ListenAndServe() error {
@@ -163,27 +183,29 @@ func (self *Server) watch(red io.Reader) error {
 		defer wg.Done()
 		for {
 			select {
-			case _, ok := <-self.watcher.Events:
+			case event, ok := <-self.watcher.Events:
 				// the events channel is closed, we cannot receive
 				// the event anymore, end the goroutine
 				if !ok {
 					return
 				}
-
-				// if event.Has(fsnotify.Create) {
-				// 	go func() {
-				// 		if err := self.mux.Route(event.Name); err != nil {
-				// 			watcher.Errors <- err
-				// 		}
-				// 	}()
-				//}
+				go func() {
+					ctx, err := self.makeContext(event)
+					if err != nil {
+						self.watcher.Errors <- err
+						return
+					}
+					if err := self.Handler.ServeFSEvent(ctx); err != nil {
+						self.watcher.Errors <- err
+					}
+				}()
 			case err, ok := <-self.watcher.Errors:
 				// the error channel is closed, we cannot receive
 				// the errors anymore, end the goroutine
 				if !ok {
 					return
 				}
-				log.Print(err)
+				self.ErrorHandler.HandleError(err)
 			}
 		}
 	}()
@@ -191,6 +213,20 @@ func (self *Server) watch(red io.Reader) error {
 	wg.Wait()
 
 	return nil
+}
+
+func (self *Server) makeContext(evt fsnotify.Event) (context.Context, error) {
+	req, err := self.makeRequest(evt)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	ctx = context.WithValue(ctx, "request", req)
+	return ctx, nil
+}
+
+func (self *Server) makeRequest(evt fsnotify.Event) (request, error) {
+	return request{}, nil
 }
 
 func NewServer(root string, depth int, ignoreList []string, handler Handler) (*Server, error) {
@@ -204,7 +240,7 @@ func NewServer(root string, depth int, ignoreList []string, handler Handler) (*S
 	}
 
 	if handler == nil {
-		handler = nil
+		handler = defaultServeMux
 	}
 
 	ignoreList = append(ignoreList, ".git/")
@@ -215,8 +251,4 @@ func NewServer(root string, depth int, ignoreList []string, handler Handler) (*S
 		MaxDepth:   depth,
 		IgnoreList: ignoreList,
 	}, nil
-}
-
-type Handler interface {
-	ServeFSEvent(ctx context.Context) error
 }
