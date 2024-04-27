@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/gabriel-vasile/mimetype"
 	"github.com/gobwas/glob"
 )
 
@@ -37,13 +37,16 @@ type ErrorHandler interface {
 }
 
 type request struct {
-	path     string
-	size     int
-	fileType string
-	mimetype string
-	action   string
-	date     time.Time
-	hostname string
+	path      string
+	size      int
+	isDir     bool
+	mode      fs.FileMode
+	mimetype  *mimetype.MIME
+	action    fsnotify.Op
+	createdAt time.Time
+	updatedAt time.Time
+	date      time.Time
+	hostname  string
 }
 
 func (self *Server) ListenAndServe() error {
@@ -84,7 +87,8 @@ func (self *Server) walk(root string, wrt io.Writer) error {
 			return err
 		}
 
-		// We are only interested in Dirs
+		// currently we are only interested in events
+		// occured in a directory
 		if !info.IsDir() {
 			return nil
 		}
@@ -225,8 +229,38 @@ func (self *Server) makeContext(evt fsnotify.Event) (context.Context, error) {
 	return ctx, nil
 }
 
-func (self *Server) makeRequest(evt fsnotify.Event) (request, error) {
-	return request{}, nil
+func (self *Server) makeRequest(evt fsnotify.Event) (*request, error) {
+	var err error
+
+	fileStat, err := os.Stat(evt.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		return nil, err
+	}
+
+	var mType *mimetype.MIME
+	if !fileStat.IsDir() {
+		mType, err = mimetype.DetectFile(evt.Name)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &request{
+		path:      evt.Name,
+		size:      int(fileStat.Size()),
+		isDir:     fileStat.IsDir(),
+		mode:      fileStat.Mode(),
+		mimetype:  mType,
+		action:    evt.Op,
+		updatedAt: fileStat.ModTime(),
+		date:      time.Now(),
+		hostname:  hostname,
+	}, nil
 }
 
 func NewServer(root string, depth int, ignoreList []string, handler Handler) (*Server, error) {
