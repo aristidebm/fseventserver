@@ -122,9 +122,9 @@ func (self *Server) watch(red io.Reader) error {
 	}
 	defer self.watcher.Close()
 
-	scanner := bufio.NewScanner(red)
-	for scanner.Scan() {
-		if err = self.watcher.Add(scanner.Text()); err != nil {
+	sc := bufio.NewScanner(red)
+	for sc.Scan() {
+		if err = self.watcher.Add(sc.Text()); err != nil {
 			return err
 		}
 	}

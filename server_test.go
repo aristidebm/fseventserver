@@ -50,9 +50,10 @@ func TestWalk(t *testing.T) {
 	if err != nil {
 		t.Fatal("cannot read from buffer")
 	}
-
 	actual := strings.Split(string(data), "\n")
 
+	// ReadAll add an extra empty string at the end
+	actual = actual[:len(actual)-1]
 	assert.Equal(t, expected, actual)
 }
 
@@ -79,7 +80,8 @@ func TestWalkWithMaxDepth(t *testing.T) {
 	}
 
 	actual := strings.Split(string(data), "\n")
-
+	// ReadAll add an extra empty string at the end
+	actual = actual[:len(actual)-1]
 	assert.Equal(t, expected, actual)
 }
 
