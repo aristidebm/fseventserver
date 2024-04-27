@@ -263,7 +263,7 @@ func (self *Server) makeRequest(evt fsnotify.Event) (*request, error) {
 	}, nil
 }
 
-func NewServer(root string, depth int, ignoreList []string, handler Handler) (*Server, error) {
+func NewServer(root string, maxDepth int, ignoreList []string, handler Handler, errorHandler ErrorHandler) (*Server, error) {
 	var err error
 
 	if root == "" {
@@ -277,12 +277,17 @@ func NewServer(root string, depth int, ignoreList []string, handler Handler) (*S
 		handler = defaultServeMux
 	}
 
+	if errorHandler == nil {
+		errorHandler = defaultErrorHandler
+	}
+
 	ignoreList = append(ignoreList, ".git/")
 
 	return &Server{
-		Root:       root,
-		Handler:    handler,
-		MaxDepth:   depth,
-		IgnoreList: ignoreList,
+		Root:         root,
+		Handler:      handler,
+		ErrorHandler: errorHandler,
+		MaxDepth:     maxDepth,
+		IgnoreList:   ignoreList,
 	}, nil
 }
