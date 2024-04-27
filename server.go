@@ -49,6 +49,15 @@ type request struct {
 	hostname  string
 }
 
+func ListenAndServe(root string, handler Handler) error {
+	server, err := NewServer(root, -1, nil, handler, nil)
+	if err != nil {
+		return err
+	}
+	server.ListenAndServe()
+	return nil
+}
+
 func (self *Server) ListenAndServe() error {
 	var err error
 

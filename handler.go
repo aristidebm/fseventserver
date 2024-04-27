@@ -7,14 +7,22 @@ import (
 	"github.com/gobwas/glob"
 )
 
-type HandleFunc func(ctx context.Context) error
+type HandlerFunc func(ctx context.Context) error
 
-func (self HandleFunc) ServeFSEvent(ctx context.Context) error {
+func (self HandlerFunc) ServeFSEvent(ctx context.Context) error {
 	return self(ctx)
 }
 
 type ServeMux struct {
 	patterns map[glob.Glob]Handler
+}
+
+func Handle(path string, handler Handler) error {
+	return defaultServeMux.register(path, handler)
+}
+
+func HandleFunc(path string, handler HandlerFunc) error {
+	return defaultServeMux.register(path, handler)
 }
 
 func (self *ServeMux) ServeFSEvent(ctx context.Context) error {
@@ -28,7 +36,7 @@ func (self *ServeMux) register(path string, handler Handler) error {
 		return errors.New("")
 	}
 
-	if fun, ok := handler.(HandleFunc); ok && fun == nil {
+	if fun, ok := handler.(HandlerFunc); ok && fun == nil {
 		return errors.New("")
 	}
 
