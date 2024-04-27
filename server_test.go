@@ -1,4 +1,4 @@
-package fsserver
+package fseventserver
 
 import (
 	"bytes"

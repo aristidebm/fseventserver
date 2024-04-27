@@ -1,4 +1,4 @@
-module example.com/fsserver
+module example.com/fseventserver
 
 go 1.22.2
 

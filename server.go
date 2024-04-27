@@ -1,4 +1,4 @@
-package fsserver
+package fseventserver
 
 import (
 	"bufio"
@@ -218,7 +218,5 @@ func NewServer(root string, depth int, ignoreList []string, handler Handler) (*S
 }
 
 type Handler interface {
-	Handle(path string, fun HandleFunc)
+	ServeFSEvent(ctx context.Context) error
 }
-
-type HandleFunc func(ctx context.Context) error

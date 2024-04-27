@@ -1,0 +1,62 @@
+package fseventserver
+
+import (
+	"context"
+	"errors"
+
+	"github.com/gobwas/glob"
+)
+
+type HandleFunc func(ctx context.Context) error
+
+func (self HandleFunc) ServeFSEvent(ctx context.Context) error {
+	return self(ctx)
+}
+
+type ServeMux struct {
+	patterns map[glob.Glob]Handler
+}
+
+func (self *ServeMux) ServeFSEvent(ctx context.Context) error {
+	handler := self.findHandler(ctx)
+	return handler.ServeFSEvent(ctx)
+}
+
+func (self *ServeMux) register(path string, handler Handler) error {
+
+	if path == "" {
+		return errors.New("")
+	}
+
+	if fun, ok := handler.(HandleFunc); ok && fun == nil {
+		return errors.New("")
+	}
+
+	if len(self.patterns) == 0 {
+		self.patterns = make(map[glob.Glob]Handler)
+	}
+
+	pattern, err := glob.Compile(path)
+	if err != nil {
+		return err
+	}
+
+	if _, ok := self.patterns[pattern]; ok {
+		return errors.New("")
+	}
+
+	self.patterns[pattern] = handler
+
+	return nil
+}
+
+func (self *ServeMux) findHandler(ctx context.Context) Handler {
+	// fixme: retreive path from context
+	path := ""
+	for pattern, handler := range self.patterns {
+		if pattern.Match(path) {
+			return handler
+		}
+	}
+	return nil
+}
