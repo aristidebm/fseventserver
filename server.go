@@ -13,14 +13,17 @@ import (
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/gobwas/glob"
 )
 
 type Server struct {
-	Root       string
-	Handler    Handler
-	MaxDepth   int
-	IgnoreList []string
-	watcher    *fsnotify.Watcher
+	Root     string
+	Handler  Handler
+	MaxDepth int
+	// glog pattern can be provided
+	IgnoreList         []string
+	compiledIgnoreList []glob.Glob
+	watcher            *fsnotify.Watcher
 }
 
 func (self *Server) ListenAndServe() error {
@@ -66,10 +69,13 @@ func (self *Server) walk(root string, wrt io.Writer) error {
 			return nil
 		}
 
-		for _, item := range self.IgnoreList[:] {
-			if item == path {
-				return nil
-			}
+		value, err := self.shouldIgnore(path)
+		if err != nil {
+			return err
+		}
+
+		if value {
+			return nil
 		}
 
 		if self.MaxDepth > 0 {
@@ -108,6 +114,25 @@ func (self *Server) computeDepth(path string, root string) int {
 	}
 
 	return depth
+}
+
+func (self *Server) shouldIgnore(path string) (bool, error) {
+	if len(self.compiledIgnoreList) == 0 {
+		for _, item := range self.IgnoreList[:] {
+			pattern, err := glob.Compile(item)
+			if err != nil {
+				return false, err
+			}
+			self.compiledIgnoreList = append(self.compiledIgnoreList, pattern)
+		}
+	}
+
+	for _, pattern := range self.compiledIgnoreList[:] {
+		if pattern.Match(path) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (self *Server) watch(red io.Reader) error {

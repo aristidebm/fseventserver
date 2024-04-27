@@ -85,7 +85,35 @@ func TestWalkWithMaxDepth(t *testing.T) {
 	assert.Equal(t, expected, actual)
 }
 
-func TestWalkWithIgnoreList(t *testing.T) {}
+func TestWalkWithIgnoreList(t *testing.T) {
+	var err error
+
+	tmpDir, err := prepareTestDirTree("/a/b/c")
+
+	if err != nil {
+		t.Fatal("cannot create test directories")
+	}
+
+	expected := []string{tmpDir}
+
+	server := &Server{
+		IgnoreList: []string{"*/a/**", "*/a*"},
+	}
+
+	var buf bytes.Buffer
+
+	server.walk(tmpDir, &buf)
+
+	data, err := io.ReadAll(&buf)
+	if err != nil {
+		t.Fatal("cannot read from buffer")
+	}
+
+	actual := strings.Split(string(data), "\n")
+	// ReadAll add an extra empty string at the end
+	actual = actual[:len(actual)-1]
+	assert.Equal(t, expected, actual)
+}
 
 // source https://github.com/golang/go/blob/master/src/path/filepath/example_unix_walk_test.go#L16C1-L29C2
 func prepareTestDirTree(tree string) (string, error) {

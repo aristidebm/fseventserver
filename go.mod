@@ -4,6 +4,7 @@ go 1.22.2
 
 require (
 	github.com/fsnotify/fsnotify v1.7.0
+	github.com/gobwas/glob v0.2.3
 	github.com/stretchr/testify v1.9.0
 )
 
