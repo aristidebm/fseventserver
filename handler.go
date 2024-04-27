@@ -51,10 +51,15 @@ func (self *ServeMux) register(path string, handler Handler) error {
 }
 
 func (self *ServeMux) findHandler(ctx context.Context) Handler {
-	// fixme: retreive path from context
-	path := ""
+	value := ctx.Value("request")
+	req, ok := value.(request)
+
+	if !ok {
+		return nil
+	}
+
 	for pattern, handler := range self.patterns {
-		if pattern.Match(path) {
+		if pattern.Match(req.path) {
 			return handler
 		}
 	}
