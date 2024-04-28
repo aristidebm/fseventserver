@@ -27,7 +27,7 @@ func HandleFunc(path string, handler HandlerFunc) error {
 
 func (self *ServeMux) ServeFSEvent(ctx context.Context) error {
 	handler := self.findHandler(ctx)
-	return handler.ServeFSEvent(ctx)
+    return handler.ServeFSEvent(ctx)
 }
 
 func (self *ServeMux) register(path string, handler Handler) error {

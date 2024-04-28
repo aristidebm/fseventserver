@@ -4,12 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -170,11 +170,11 @@ func (self *Server) shouldIgnore(path string) (bool, error) {
 
 func (self *Server) watch(red io.Reader) error {
 	var err error
+
 	// defers wather initialization here because
 	// fsnotify.NewWatcher() combines watcher creation
 	// and listening
 	self.watcher, err = fsnotify.NewWatcher()
-
 	if err != nil {
 		return err
 	}
@@ -186,56 +186,52 @@ func (self *Server) watch(red io.Reader) error {
 			return err
 		}
 	}
-	var wg sync.WaitGroup
 
-	// use a goroutine to listen to changes
-	// and process them
-	wg.Add(1)
-	go func() {
+	// fixme: replace me with a log
+	fmt.Print(self.watcher.WatchList())
 
-		defer wg.Done()
-		for {
-			select {
-			case event, ok := <-self.watcher.Events:
-				// the events channel is closed, we cannot receive
-				// the event anymore, end the goroutine
-				if !ok {
-					return
-				}
-				go func() {
-					ctx, err := self.makeContext(event)
-					if err != nil {
-						self.watcher.Errors <- err
-						return
-					}
-					if err := self.Handler.ServeFSEvent(ctx); err != nil {
-						self.watcher.Errors <- err
-					}
-				}()
-			case err, ok := <-self.watcher.Errors:
-				// the error channel is closed, we cannot receive
-				// the errors anymore, end the goroutine
-				if !ok {
-					return
-				}
-				self.ErrorHandler.HandleError(err)
+	for {
+		select {
+		case event, ok := <-self.watcher.Events:
+			// the events channel is closed, we cannot receive
+			// the event anymore, end the goroutine
+			if !ok {
+				return errors.New("")
 			}
+
+			ctx, cancel, err := self.makeContext(event)
+			if err != nil {
+				self.watcher.Errors <- err
+				continue
+			}
+
+			handle := func() {
+				defer cancel()
+				if err := self.Handler.ServeFSEvent(ctx); err != nil {
+					self.watcher.Errors <- err
+				}
+			}
+			go handle()
+		case err, ok := <-self.watcher.Errors:
+			// the error channel is closed, we cannot receive
+			// the errors anymore, end the goroutine
+			if !ok {
+				return errors.New("")
+			}
+			self.ErrorHandler.HandleError(err)
 		}
-	}()
-
-	wg.Wait()
-
-	return nil
+	}
 }
 
-func (self *Server) makeContext(evt fsnotify.Event) (context.Context, error) {
+func (self *Server) makeContext(evt fsnotify.Event) (context.Context, context.CancelFunc, error) {
 	req, err := self.makeRequest(evt)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, "request", req)
-	return ctx, nil
+	ctx, cancel := context.WithCancel(ctx)
+	return ctx, cancel, nil
 }
 
 func (self *Server) makeRequest(evt fsnotify.Event) (*request, error) {
