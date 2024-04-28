@@ -3,6 +3,7 @@ package fseventserver
 import (
 	"context"
 	"errors"
+	"reflect"
 
 	"github.com/gobwas/glob"
 )
@@ -43,7 +44,6 @@ func (self *ServeMux) ServeFSEvent(ctx context.Context) error {
 }
 
 func (self *ServeMux) register(path string, handler Handler) error {
-
 	if path == "" {
 		return errors.New("")
 	}
@@ -60,21 +60,27 @@ func (self *ServeMux) register(path string, handler Handler) error {
 	if err != nil {
 		return err
 	}
-	// fixme: how can we insure that patterns does not collide ?
+
+	for _, item := range self.store {
+		if reflect.DeepEqual(item.key, pattern) {
+			return errors.New("")
+		}
+	}
+
 	self.store = append(self.store, storeItem{key: pattern, value: handler})
 	return nil
 }
 
 func (self *ServeMux) findHandler(ctx context.Context) Handler {
 	value := ctx.Value("request")
-	req, ok := value.(*request)
+	req, ok := value.(*Request)
 
 	if !ok {
 		return nil
 	}
 
 	for _, item := range self.store {
-		if item.key.Match(req.path) {
+		if item.key.Match(req.Path) {
 			return item.value
 		}
 	}

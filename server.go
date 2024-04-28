@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -36,25 +37,31 @@ type ErrorHandler interface {
 	HandleError(err error)
 }
 
-type request struct {
-	path      string
-	size      int
-	isDir     bool
-	mode      fs.FileMode
-	mimetype  *mimetype.MIME
-	action    fsnotify.Op
-	createdAt time.Time
-	updatedAt time.Time
-	date      time.Time
-	hostname  string
+type Request struct {
+	Path      string
+	Size      int
+	IsDir     bool
+	Mode      fs.FileMode
+	Mimetype  *mimetype.MIME
+	Action    fsnotify.Op
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Date      time.Time
+	Hostname  string
 }
 
 func ListenAndServe(root string, handler Handler) error {
+	var err error
+
 	server, err := NewServer(root, -1, nil, handler, nil)
 	if err != nil {
 		return err
 	}
-	server.ListenAndServe()
+
+	if err = server.ListenAndServe(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -187,8 +194,7 @@ func (self *Server) watch(red io.Reader) error {
 		}
 	}
 
-	// fixme: replace me with a log
-	fmt.Print(self.watcher.WatchList())
+	log.Print(self.watcher.WatchList())
 
 	for {
 		select {
@@ -234,7 +240,7 @@ func (self *Server) makeContext(evt fsnotify.Event) (context.Context, context.Ca
 	return ctx, cancel, nil
 }
 
-func (self *Server) makeRequest(evt fsnotify.Event) (*request, error) {
+func (self *Server) makeRequest(evt fsnotify.Event) (*Request, error) {
 	var err error
 
 	fileStat, err := os.Stat(evt.Name)
@@ -255,16 +261,16 @@ func (self *Server) makeRequest(evt fsnotify.Event) (*request, error) {
 		}
 	}
 
-	return &request{
-		path:      evt.Name,
-		size:      int(fileStat.Size()),
-		isDir:     fileStat.IsDir(),
-		mode:      fileStat.Mode(),
-		mimetype:  mType,
-		action:    evt.Op,
-		updatedAt: fileStat.ModTime(),
-		date:      time.Now(),
-		hostname:  hostname,
+	return &Request{
+		Path:      evt.Name,
+		Size:      int(fileStat.Size()),
+		IsDir:     fileStat.IsDir(),
+		Mode:      fileStat.Mode(),
+		Mimetype:  mType,
+		Action:    evt.Op,
+		UpdatedAt: fileStat.ModTime(),
+		Date:      time.Now(),
+		Hostname:  hostname,
 	}, nil
 }
 

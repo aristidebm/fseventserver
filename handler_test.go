@@ -2,7 +2,6 @@ package fseventserver
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/gobwas/glob"
@@ -12,7 +11,6 @@ import (
 type FakeHandler struct{}
 
 func (self *FakeHandler) ServeFSEvent(ctx context.Context) error {
-	fmt.Print(ctx)
 	return nil
 }
 
@@ -22,6 +20,14 @@ func TestRegisterHandler(t *testing.T) {
 	serverMux.register("/tmp", handler)
 	key, _ := glob.Compile("/tmp")
 	assert.Equal(t, key, serverMux.store[0].key)
+}
+
+func TestRegisterPatternTwice(t *testing.T) {
+	handler := &FakeHandler{}
+	serverMux := NewServerMux()
+	serverMux.register("/tmp", handler)
+	assert.Equal(t, 1, len(serverMux.store))
+	assert.Error(t, serverMux.register("/tmp", handler))
 }
 
 func TestFindHandler(t *testing.T) {
@@ -34,7 +40,7 @@ func TestFindHandler(t *testing.T) {
 	assert.Equal(t, 2, len(serverMux.store))
 
 	ctx := context.Background()
-	req := &request{path: "/tmp/Videos"}
+	req := &Request{path: "/tmp/Videos"}
 	ctx = context.WithValue(ctx, "request", req)
 	actual := serverMux.findHandler(ctx)
 	assert.Equal(t, handler1, actual)
