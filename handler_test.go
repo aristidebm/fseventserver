@@ -40,7 +40,7 @@ func TestFindHandler(t *testing.T) {
 	assert.Equal(t, 2, len(serverMux.store))
 
 	ctx := context.Background()
-	req := &Request{path: "/tmp/Videos"}
+	req := &Request{Path: "/tmp/Videos"}
 	ctx = context.WithValue(ctx, "request", req)
 	actual := serverMux.findHandler(ctx)
 	assert.Equal(t, handler1, actual)

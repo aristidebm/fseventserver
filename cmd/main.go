@@ -18,7 +18,7 @@ func main() {
     fseventserver.HandleFunc("~/Downloads/*.md", PDFConverter)
     fseventserver.HandleFunc("~/Downloads/*.json", JSONPretty)
 
-    if err := fseventserver.ListenAndServe("~", nil); err != nil {
+    if err := fseventserver.ListenAndServe("~/Downloads", nil); err != nil {
         log.Fatal(err)
     }
 }

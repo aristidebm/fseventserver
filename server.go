@@ -20,18 +20,32 @@ import (
 )
 
 type Server struct {
-	Root         string
-	Handler      Handler
-	MaxDepth     int
+	Root     string
+	Handler  Handler
+	MaxDepth int
+	// whether to skip watching errors
+	// if set true, files that cannot be watched are skipped
+	// otherwise the server will stop
+	Skip         bool
 	ErrorHandler ErrorHandler
 	// glog pattern can be provided
 	IgnoreList         []string
+	Logger             Logger
 	compiledIgnoreList []glob.Glob
 	watcher            *fsnotify.Watcher
 }
 
 type Handler interface {
 	ServeFSEvent(ctx context.Context) error
+}
+
+type Logger interface {
+	Trace(msg string)
+	Debug(msg string)
+	Info(msg string)
+	Warn(msg string)
+	Error(msg string)
+	SetOuput(out io.Writer)
 }
 
 type ErrorHandler interface {
@@ -54,7 +68,7 @@ type Request struct {
 func ListenAndServe(root string, handler Handler) error {
 	var err error
 
-	server, err := NewServer(root, -1, nil, handler, nil)
+	server, err := NewServer(root, handler, -1, nil, nil, nil)
 	if err != nil {
 		return err
 	}
@@ -199,6 +213,9 @@ func (self *Server) watch(red io.Reader) error {
 	sc := bufio.NewScanner(red)
 	for sc.Scan() {
 		if err = self.watcher.Add(sc.Text()); err != nil {
+			if self.Skip {
+				continue
+			}
 			return err
 		}
 	}
@@ -283,7 +300,7 @@ func (self *Server) makeRequest(evt fsnotify.Event) (*Request, error) {
 	}, nil
 }
 
-func NewServer(root string, maxDepth int, ignoreList []string, handler Handler, errorHandler ErrorHandler) (*Server, error) {
+func NewServer(root string, handler Handler, maxDepth int, ignoreList []string, errorHandler ErrorHandler, logger Logger) (*Server, error) {
 	var err error
 
 	if root == "" {
@@ -299,6 +316,10 @@ func NewServer(root string, maxDepth int, ignoreList []string, handler Handler, 
 
 	if errorHandler == nil {
 		errorHandler = defaultErrorHandler
+	}
+
+	if logger == nil {
+		logger = defaultLogger
 	}
 
 	ignoreList = append(ignoreList, ".git/")
