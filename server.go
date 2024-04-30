@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -38,16 +39,16 @@ type ErrorHandler interface {
 }
 
 type Request struct {
-	Path      string
-	Size      int
-	IsDir     bool
-	Mode      fs.FileMode
-	Mimetype  *mimetype.MIME
-	Action    fsnotify.Op
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	Date      time.Time
-	Hostname  string
+	Path         string
+	Size         int64
+	IsDir        bool
+	Mode         fs.FileMode
+	Mimetype     *mimetype.MIME
+	Action       fsnotify.Op
+	LastModified time.Time
+	Date         time.Time
+	Hostname     string
+	Timeout      time.Duration
 }
 
 func ListenAndServe(root string, handler Handler) error {
@@ -67,10 +68,18 @@ func ListenAndServe(root string, handler Handler) error {
 
 func (self *Server) ListenAndServe() error {
 	var err error
+	var root = self.Root
 
-	root := self.Root
 	if root == "" {
 		root, err = os.Getwd()
+		if err != nil {
+			return err
+		}
+	}
+
+	tilde := "~"
+	if strings.HasPrefix(root, tilde) {
+		root, err = expandUser(root)
 		if err != nil {
 			return err
 		}
@@ -262,15 +271,15 @@ func (self *Server) makeRequest(evt fsnotify.Event) (*Request, error) {
 	}
 
 	return &Request{
-		Path:      evt.Name,
-		Size:      int(fileStat.Size()),
-		IsDir:     fileStat.IsDir(),
-		Mode:      fileStat.Mode(),
-		Mimetype:  mType,
-		Action:    evt.Op,
-		UpdatedAt: fileStat.ModTime(),
-		Date:      time.Now(),
-		Hostname:  hostname,
+		Path:         evt.Name,
+		Size:         fileStat.Size(),
+		IsDir:        fileStat.IsDir(),
+		Mode:         fileStat.Mode(),
+		Mimetype:     mType,
+		Action:       evt.Op,
+		LastModified: fileStat.ModTime(),
+		Date:         time.Now(),
+		Hostname:     hostname,
 	}, nil
 }
 

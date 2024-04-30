@@ -3,6 +3,7 @@ package fseventserver
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"reflect"
 
 	"github.com/gobwas/glob"
@@ -44,8 +45,16 @@ func (self *ServeMux) ServeFSEvent(ctx context.Context) error {
 }
 
 func (self *ServeMux) register(path string, handler Handler) error {
+	var err error
 	if path == "" {
 		return errors.New("")
+	}
+
+	if !filepath.IsAbs(path) {
+		path, err = expandUser(path)
+		if err != nil {
+			return err
+		}
 	}
 
 	if fun, ok := handler.(HandlerFunc); ok && fun == nil {
