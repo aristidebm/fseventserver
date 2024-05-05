@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-    "os"
 	"log"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -17,7 +17,7 @@ import (
 
 func main() {
     fseventserver.HandleFunc("~/Downloads/*.mp4", Mp3Converter)
-    // fseventserver.HandleFunc("~/Downloads/*.md", PDFConverter)
+    fseventserver.HandleFunc("~/Downloads/*.md", PDFConverter)
     fseventserver.HandleFunc("~/Downloads/*.json", JSONPretty)
 
     if err := fseventserver.ListenAndServe("~/Downloads", nil); err != nil {
@@ -37,19 +37,18 @@ func Mp3Converter(ctx context.Context) error {
     return cmd.Run()
 }
 
-// func PDFConverter(ctx context.Context) error {
-//     value := ctx.Value("request")
-//     req := value.(*fseventserver.Request)
-//     fmt.Println(req.Mimetype.Extension())
-//     if req.Mimetype.Extension() != ".md" {
-//         return errors.New("the mimetype")
-//     }
-//     name := strings.TrimSuffix(req.Path, req.Mimetype.Extension()) 
-//     name = fmt.Sprintf("%s.pdf", name) 
-//     cmd := exec.Command("pandoc",  req.Path, "-o", name)
-//     return cmd.Run()
-// }
-//
+func PDFConverter(ctx context.Context) error {
+    value := ctx.Value("request")
+    req := value.(*fseventserver.Request)
+    fmt.Println(req.Mimetype.Extension())
+    if req.Mimetype.Extension() != ".md" {
+        return errors.New("")
+    }
+    name := strings.TrimSuffix(req.Path, req.Mimetype.Extension()) 
+    name = filepath.Base(fmt.Sprintf("%s.pdf", name))
+    cmd := exec.Command("pandoc",  req.Path, "-o", filepath.Join("/tmp", name))
+    return cmd.Run()
+}
 
 func JSONPretty(ctx context.Context) error {
     var err error

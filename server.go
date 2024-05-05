@@ -10,6 +10,7 @@ import (
 	"io/fs"
 
 	"log"
+	"mime"
 	"os"
 	"path/filepath"
 	"strings"
@@ -58,12 +59,38 @@ type Request struct {
 	Size         int64
 	IsDir        bool
 	Mode         fs.FileMode
-	Mimetype     *mimetype.MIME
+	Mimetype     *MIME
 	Action       fsnotify.Op
 	LastModified time.Time
 	Date         time.Time
 	Hostname     string
 	Timeout      time.Duration
+}
+
+type MIME struct {
+	mime      string
+	extension string
+}
+
+func (self *MIME) Extension() string {
+	return self.extension
+}
+
+func (self *MIME) String() string {
+	return self.mime
+}
+
+func (self *MIME) Is(mType string) bool {
+	// Parsing is needed because some detected MIME types contain parameters
+	// that need to be stripped for the comparison.
+	mType, _, _ = mime.ParseMediaType(mType)
+	found, _, _ := mime.ParseMediaType(self.mime)
+
+	if mType == found {
+		return true
+	}
+
+	return false
 }
 
 func ListenAndServe(root string, handler Handler) error {
@@ -282,18 +309,24 @@ func (self *Server) makeRequest(evt fsnotify.Event) (*Request, error) {
 		return nil, err
 	}
 
-	// markdonwDetector := func(raw []byte, limit uint32) bool {
-	//     //
-	//     return true
-	// }
-	//
-	// mimetype.Lookup("text/plain").Extend(markdonwDetector, "text/markdown", ".md")
-
-	var mType *mimetype.MIME
+	// try content based file detection
+	var mType *MIME
 	if !fileStat.IsDir() {
-		mType, err = mimetype.DetectFile(evt.Name)
+		value, err := mimetype.DetectFile(evt.Name)
 		if err != nil {
-			return nil, err
+			// fallback to extension based detection
+			if ext := filepath.Ext(evt.Name); ext != "" {
+				mType = &MIME{extension: ext, mime: mime.TypeByExtension(ext)}
+			}
+		}
+		mType = &MIME{extension: value.Extension(), mime: value.String()}
+	}
+
+	// text/plain is broad mimetype, it includes many other mimetypes
+	// so fallback to extension based file detection
+	if mType.Is("text/plain") {
+		if ext := filepath.Ext(evt.Name); ext != "" {
+			mType = &MIME{extension: ext, mime: mime.TypeByExtension(ext)}
 		}
 	}
 
