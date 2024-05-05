@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+
 	"log"
 	"os"
 	"path/filepath"
@@ -105,11 +106,7 @@ func (self *Server) ListenAndServe() error {
 		return err
 	}
 
-	if err = self.watch(&buf); err != nil {
-		return err
-	}
-
-	return nil
+	return self.watch(&buf)
 }
 
 func (self *Server) Close() error {
@@ -220,7 +217,7 @@ func (self *Server) watch(red io.Reader) error {
 		}
 	}
 
-	log.Print(self.watcher.WatchList())
+	self.printWatchList(self.watcher.WatchList())
 
 	for {
 		select {
@@ -237,10 +234,16 @@ func (self *Server) watch(red io.Reader) error {
 				continue
 			}
 
+			// // don't listen to item removal
+			// if event.Op.Has(fsnotify.Remove) {
+			//     continue
+			// }
+
 			handle := func() {
 				defer cancel()
 				if err := self.Handler.ServeFSEvent(ctx); err != nil {
-					self.watcher.Errors <- err
+					log.Printf("%s", err)
+					// self.watcher.Errors <- err
 				}
 			}
 			go handle()
@@ -279,6 +282,13 @@ func (self *Server) makeRequest(evt fsnotify.Event) (*Request, error) {
 		return nil, err
 	}
 
+	// markdonwDetector := func(raw []byte, limit uint32) bool {
+	//     //
+	//     return true
+	// }
+	//
+	// mimetype.Lookup("text/plain").Extend(markdonwDetector, "text/markdown", ".md")
+
 	var mType *mimetype.MIME
 	if !fileStat.IsDir() {
 		mType, err = mimetype.DetectFile(evt.Name)
@@ -298,6 +308,12 @@ func (self *Server) makeRequest(evt fsnotify.Event) (*Request, error) {
 		Date:         time.Now(),
 		Hostname:     hostname,
 	}, nil
+}
+
+func (self *Server) printWatchList(items []string) {
+	for _, item := range items {
+		fmt.Printf("-> %s\n", item)
+	}
 }
 
 func NewServer(root string, handler Handler, maxDepth int, ignoreList []string, errorHandler ErrorHandler, logger Logger) (*Server, error) {
