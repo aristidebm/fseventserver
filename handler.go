@@ -40,8 +40,10 @@ func HandleFunc(path string, handler HandlerFunc) {
 }
 
 func (self *ServeMux) ServeFSEvent(ctx context.Context) error {
-	handler := self.findHandler(ctx)
-	return handler.ServeFSEvent(ctx)
+	if handler := self.findHandler(ctx); handler != nil {
+		return handler.ServeFSEvent(ctx)
+	}
+	return errors.New("cannot process this request")
 }
 
 func (self *ServeMux) register(path string, handler Handler) error {

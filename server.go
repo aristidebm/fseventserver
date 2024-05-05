@@ -312,19 +312,18 @@ func (self *Server) makeRequest(evt fsnotify.Event) (*Request, error) {
 	// try content based file detection
 	var mType *MIME
 	if !fileStat.IsDir() {
-		value, err := mimetype.DetectFile(evt.Name)
-		if err != nil {
+		if value, err := mimetype.DetectFile(evt.Name); err == nil {
+			mType = &MIME{extension: value.Extension(), mime: value.String()}
+		} else {
 			// fallback to extension based detection
-			if ext := filepath.Ext(evt.Name); ext != "" {
-				mType = &MIME{extension: ext, mime: mime.TypeByExtension(ext)}
-			}
+			ext := filepath.Ext(evt.Name)
+			mType = &MIME{extension: ext, mime: mime.TypeByExtension(ext)}
 		}
-		mType = &MIME{extension: value.Extension(), mime: value.String()}
 	}
 
 	// text/plain is broad mimetype, it includes many other mimetypes
 	// so fallback to extension based file detection
-	if mType.Is("text/plain") {
+	if mType != nil && mType.Is("text/plain") {
 		if ext := filepath.Ext(evt.Name); ext != "" {
 			mType = &MIME{extension: ext, mime: mime.TypeByExtension(ext)}
 		}
