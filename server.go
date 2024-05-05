@@ -10,6 +10,7 @@ import (
 	"io/fs"
 
 	"log"
+	"log/slog"
 	"mime"
 	"os"
 	"path/filepath"
@@ -32,22 +33,13 @@ type Server struct {
 	ErrorHandler ErrorHandler
 	// glog pattern can be provided
 	IgnoreList         []string
-	Logger             Logger
+	Logger             slog.Logger
 	compiledIgnoreList []glob.Glob
 	watcher            *fsnotify.Watcher
 }
 
 type Handler interface {
 	ServeFSEvent(ctx context.Context) error
-}
-
-type Logger interface {
-	Trace(msg string)
-	Debug(msg string)
-	Info(msg string)
-	Warn(msg string)
-	Error(msg string)
-	SetOuput(out io.Writer)
 }
 
 type ErrorHandler interface {
