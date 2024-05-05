@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 
-	"log"
 	"log/slog"
 	"mime"
 	"os"
@@ -33,7 +33,7 @@ type Server struct {
 	ErrorHandler ErrorHandler
 	// glog pattern can be provided
 	IgnoreList         []string
-	Logger             slog.Logger
+	Logger             *slog.Logger
 	compiledIgnoreList []glob.Glob
 	watcher            *fsnotify.Watcher
 }
@@ -86,17 +86,10 @@ func (self *MIME) Is(mType string) bool {
 }
 
 func ListenAndServe(root string, handler Handler) error {
-	var err error
-
-	server, err := NewServer(root, handler, -1, nil, nil, nil)
-	if err != nil {
+	server := &Server{Root: root, Handler: handler}
+	if err := server.ListenAndServe(); err != nil {
 		return err
 	}
-
-	if err = server.ListenAndServe(); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -105,18 +98,13 @@ func (self *Server) ListenAndServe() error {
 	var root = self.Root
 
 	if root == "" {
-		root, err = os.Getwd()
-		if err != nil {
+		if root, err = defaultRoot(); err != nil {
 			return err
 		}
 	}
 
-	tilde := "~"
-	if strings.HasPrefix(root, tilde) {
-		root, err = expandUser(root)
-		if err != nil {
-			return err
-		}
+	if root, err = cleanPath(root); err != nil {
+		return err
 	}
 
 	var buf bytes.Buffer
@@ -126,6 +114,25 @@ func (self *Server) ListenAndServe() error {
 	}
 
 	return self.watch(&buf)
+}
+
+func defaultRoot() (string, error) {
+	root, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	return root, nil
+}
+
+func cleanPath(path string) (string, error) {
+	var err error
+	if strings.HasPrefix(path, "~") {
+		path, err = expandUser(path)
+		if err != nil {
+			return "", err
+		}
+	}
+	return path, nil
 }
 
 func (self *Server) Close() error {
@@ -157,14 +164,20 @@ func (self *Server) walk(root string, wrt io.Writer) error {
 			return nil
 		}
 
-		if self.MaxDepth > 0 {
+		maxDepth := self.MaxDepth
+		if maxDepth == 0 {
+			// use recursive watch by default
+			maxDepth = -1
+		}
+
+		if maxDepth > 0 {
 			depth := self.computeDepth(path, root)
 			if depth < 0 || depth > self.MaxDepth {
 				return nil
 			}
 		}
-		fmt.Fprintln(wrt, path)
 
+		fmt.Fprintln(wrt, path)
 		return nil
 	})
 
@@ -176,7 +189,7 @@ func (self *Server) walk(root string, wrt io.Writer) error {
 }
 
 func (self *Server) computeDepth(path string, root string) int {
-	depth := 0
+	depth := 1
 	current := path
 
 	for {
@@ -189,15 +202,18 @@ func (self *Server) computeDepth(path string, root string) int {
 	}
 
 	if current != root {
-		return -1
+		return int(math.Inf(1))
 	}
 
 	return depth
 }
 
 func (self *Server) shouldIgnore(path string) (bool, error) {
+	ignoreList := self.IgnoreList
+	ignoreList = append(ignoreList, ".git")
+
 	if len(self.compiledIgnoreList) == 0 {
-		for _, item := range self.IgnoreList[:] {
+		for _, item := range ignoreList {
 			pattern, err := glob.Compile(item)
 			if err != nil {
 				return false, err
@@ -206,7 +222,7 @@ func (self *Server) shouldIgnore(path string) (bool, error) {
 		}
 	}
 
-	for _, pattern := range self.compiledIgnoreList[:] {
+	for _, pattern := range self.compiledIgnoreList {
 		if pattern.Match(path) {
 			return true, nil
 		}
@@ -253,15 +269,18 @@ func (self *Server) watch(red io.Reader) error {
 				continue
 			}
 
-			// // don't listen to item removal
-			// if event.Op.Has(fsnotify.Remove) {
-			//     continue
-			// }
+			req := ctx.Value("request")
+			self.logger().Info(fmt.Sprintf("sending request %+v", req))
 
 			handle := func() {
 				defer cancel()
-				if err := self.Handler.ServeFSEvent(ctx); err != nil {
-					log.Printf("%s", err)
+				handler := self.Handler
+				if handler == nil {
+					handler = defaultServeMux
+				}
+
+				if err := handler.ServeFSEvent(ctx); err != nil {
+					self.logger().Error(fmt.Sprint(err))
 					// self.watcher.Errors <- err
 				}
 			}
@@ -272,7 +291,11 @@ func (self *Server) watch(red io.Reader) error {
 			if !ok {
 				return errors.New("")
 			}
-			self.ErrorHandler.HandleError(err)
+			errHandler := self.ErrorHandler
+			if errHandler == nil {
+				errHandler = defaultErrorHandler
+			}
+			errHandler.HandleError(err)
 		}
 	}
 }
@@ -335,40 +358,22 @@ func (self *Server) makeRequest(evt fsnotify.Event) (*Request, error) {
 }
 
 func (self *Server) printWatchList(items []string) {
+	msg := make([]string, 0)
 	for _, item := range items {
-		fmt.Printf("-> %s\n", item)
+		msg = append(msg, fmt.Sprintf("-> %s", item))
 	}
+	self.logger().Info(strings.Join(msg, "\n"))
 }
 
-func NewServer(root string, handler Handler, maxDepth int, ignoreList []string, errorHandler ErrorHandler, logger Logger) (*Server, error) {
-	var err error
-
-	if root == "" {
-		root, err = os.Getwd()
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if handler == nil {
-		handler = defaultServeMux
-	}
-
-	if errorHandler == nil {
-		errorHandler = defaultErrorHandler
-	}
-
+func (self *Server) logger() *slog.Logger {
+	logger := self.Logger
 	if logger == nil {
-		logger = defaultLogger
+		logger = makeLogger()
 	}
+	return logger
+}
 
-	ignoreList = append(ignoreList, ".git/")
-
-	return &Server{
-		Root:         root,
-		Handler:      handler,
-		ErrorHandler: errorHandler,
-		MaxDepth:     maxDepth,
-		IgnoreList:   ignoreList,
-	}, nil
+func makeLogger() *slog.Logger {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	return logger
 }

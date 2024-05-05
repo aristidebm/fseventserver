@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,12 +17,12 @@ func TestComputeDepth(t *testing.T) {
 	var server Server
 
 	data := map[string]int{
-		"/a/b /a":     1,
-		"/a/b/c /a":   2,
-		"/a/b/c /a/b": 1,
-		"/a/b/c/d /a": 3,
-		"/b/c/d /a":   -1,
-		"/a /a":       0,
+		"/a/b /a":     2,
+		"/a/b/c /a":   3,
+		"/a/b/c /a/b": 2,
+		"/a/b/c/d /a": 4,
+		"/b/c/d /a":   int(math.Inf(1)),
+		"/a /a":       1,
 	}
 
 	for key, value := range data {
@@ -68,7 +69,7 @@ func TestWalkWithMaxDepth(t *testing.T) {
 	expected := []string{tmpDir, filepath.Join(tmpDir, "/a")}
 
 	server := &Server{
-		MaxDepth: 1,
+		MaxDepth: 2,
 	}
 
 	var buf bytes.Buffer
