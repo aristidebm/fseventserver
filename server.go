@@ -267,6 +267,12 @@ func (self *Server) watch(red io.Reader) error {
 				panic(ErrInternalError)
 			}
 
+			// NOTE: file creating is followed by multiple writes events
+			// we need to ignore them, since we are not interested in them
+			if event.Op.Has(fsnotify.Write) {
+				continue
+			}
+
 			ctx, cancel, err := self.makeContext(event)
 
 			if err != nil {
@@ -274,8 +280,6 @@ func (self *Server) watch(red io.Reader) error {
 				continue
 			}
 
-			// FIXME: multiple event are getting created for single file
-			// this leads to spin up multiple goroutines for the same file
 			req := ctx.Value("request")
 			self.Logger.Info(fmt.Sprintf("sending request %+v", req))
 
