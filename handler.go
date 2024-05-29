@@ -2,7 +2,7 @@ package fseventserver
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"path/filepath"
 	"reflect"
 
@@ -43,24 +43,25 @@ func (self *ServeMux) ServeFSEvent(ctx context.Context) error {
 	if handler := self.findHandler(ctx); handler != nil {
 		return handler.ServeFSEvent(ctx)
 	}
-	return errors.New("cannot process this request")
+	req := ctx.Value("request")
+	return fmt.Errorf("%w cannot find a handler associated with the request %+v", ErrHandlingRequest, req)
 }
 
 func (self *ServeMux) register(path string, handler Handler) error {
 	var err error
 	if path == "" {
-		return errors.New("")
+		return fmt.Errorf("%w the path should not be empty", ErrRegisteringPath)
 	}
 
 	if !filepath.IsAbs(path) {
 		path, err = expandUser(path)
 		if err != nil {
-			return err
+			return fmt.Errorf("%w cannot expand the path, you have to provide an absolute path", ErrRegisteringPath)
 		}
 	}
 
 	if fun, ok := handler.(HandlerFunc); ok && fun == nil {
-		return errors.New("")
+		return fmt.Errorf("%w the handler cannot be nil, you have to provide a non nil handler", ErrRegisteringPath)
 	}
 
 	if len(self.store) == 0 {
@@ -69,16 +70,17 @@ func (self *ServeMux) register(path string, handler Handler) error {
 
 	pattern, err := glob.Compile(path)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w the provided path is not glob compatible, make sure you provide a glob like path %w", ErrRegisteringPath, err)
 	}
 
 	for _, item := range self.store {
 		if reflect.DeepEqual(item.key, pattern) {
-			return errors.New("")
+			return fmt.Errorf("%w the path is already registered", ErrRegisteringPath)
 		}
 	}
 
 	self.store = append(self.store, storeItem{key: pattern, value: handler})
+
 	return nil
 }
 

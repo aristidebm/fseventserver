@@ -1,25 +1,15 @@
 package fseventserver
 
 import (
-	//    "errors"
-	"github.com/fsnotify/fsnotify"
+	//"errors"
+	// "github.com/fsnotify/fsnotify"
+	"log/slog"
 )
 
 type DefaultErrorHandler struct{}
 
 func (self *DefaultErrorHandler) HandleError(err error) {
-
-	switch err.Error() {
-	case fsnotify.ErrClosed.Error():
-		//
-	case fsnotify.ErrNonExistentWatch.Error():
-		//
-	case fsnotify.ErrEventOverflow.Error():
-		//
-	default:
-		//
-	}
-
+	slog.Error(err.Error())
 }
 
 func NewErrorHandler() *DefaultErrorHandler {

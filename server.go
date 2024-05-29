@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -26,7 +25,7 @@ type Server struct {
 	Root     string
 	Handler  Handler
 	MaxDepth int
-	// whether to skip watching errors
+	// whether to stop watching on errors
 	// if set true, files that cannot be watched are skipped
 	// otherwise the server will stop
 	Skip         bool
@@ -86,7 +85,7 @@ func (self *MIME) Is(mType string) bool {
 }
 
 func ListenAndServe(root string, handler Handler) error {
-	server := &Server{Root: root, Handler: handler}
+	server := &Server{Root: root, Handler: handler, Logger: makeLogger()}
 	if err := server.ListenAndServe(); err != nil {
 		return err
 	}
@@ -99,18 +98,18 @@ func (self *Server) ListenAndServe() error {
 
 	if root == "" {
 		if root, err = defaultRoot(); err != nil {
-			return err
+			return fmt.Errorf("%w %s %w", ErrListerningDirectory, root, err)
 		}
 	}
 
 	if root, err = cleanPath(root); err != nil {
-		return err
+		return fmt.Errorf("%w %s %w", ErrListerningDirectory, root, err)
 	}
 
 	var buf bytes.Buffer
 
 	if err := self.walk(root, &buf); err != nil {
-		return err
+		return fmt.Errorf("%w %s %w", ErrListerningDirectory, root, err)
 	}
 
 	return self.watch(&buf)
@@ -238,18 +237,23 @@ func (self *Server) watch(red io.Reader) error {
 	// and listening
 	self.watcher, err = fsnotify.NewWatcher()
 	if err != nil {
-		return err
+		return fmt.Errorf("%w %w", ErrWatchingFile, err)
 	}
 	defer self.watcher.Close()
 
 	sc := bufio.NewScanner(red)
 	for sc.Scan() {
-		if err = self.watcher.Add(sc.Text()); err != nil {
+		filename := sc.Text()
+		if err = self.watcher.Add(filename); err != nil {
 			if self.Skip {
 				continue
 			}
-			return err
+			return fmt.Errorf("%w %s %w", ErrWatchingFile, filename, err)
 		}
+	}
+
+	if err := sc.Err(); err != nil {
+		return fmt.Errorf("%w %w", ErrWatchingFile, err)
 	}
 
 	self.printWatchList(self.watcher.WatchList())
@@ -260,28 +264,33 @@ func (self *Server) watch(red io.Reader) error {
 			// the events channel is closed, we cannot receive
 			// the event anymore, end the goroutine
 			if !ok {
-				return errors.New("")
+				panic(ErrInternalError)
 			}
 
 			ctx, cancel, err := self.makeContext(event)
+
 			if err != nil {
 				self.watcher.Errors <- err
 				continue
 			}
 
+			// FIXME: multiple event are getting created for single file
+			// this leads to spin up multiple goroutines for the same file
 			req := ctx.Value("request")
-			self.logger().Info(fmt.Sprintf("sending request %+v", req))
+			self.Logger.Info(fmt.Sprintf("sending request %+v", req))
 
 			handle := func() {
+
 				defer cancel()
+
 				handler := self.Handler
 				if handler == nil {
 					handler = defaultServeMux
 				}
 
 				if err := handler.ServeFSEvent(ctx); err != nil {
-					self.logger().Error(fmt.Sprint(err))
-					// self.watcher.Errors <- err
+					//self.Logger.Error(fmt.Sprint(err))
+					self.watcher.Errors <- err
 				}
 			}
 			go handle()
@@ -289,7 +298,7 @@ func (self *Server) watch(red io.Reader) error {
 			// the error channel is closed, we cannot receive
 			// the errors anymore, end the goroutine
 			if !ok {
-				return errors.New("")
+				panic(ErrInternalError)
 			}
 			errHandler := self.ErrorHandler
 			if errHandler == nil {
@@ -362,18 +371,9 @@ func (self *Server) printWatchList(items []string) {
 	for _, item := range items {
 		msg = append(msg, fmt.Sprintf("-> %s", item))
 	}
-	self.logger().Info(strings.Join(msg, "\n"))
-}
-
-func (self *Server) logger() *slog.Logger {
-	logger := self.Logger
-	if logger == nil {
-		logger = makeLogger()
-	}
-	return logger
+	self.Logger.Info(strings.Join(msg, "\n"))
 }
 
 func makeLogger() *slog.Logger {
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	return logger
+	return slog.Default()
 }

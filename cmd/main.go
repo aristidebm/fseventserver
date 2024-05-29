@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -12,7 +11,6 @@ import (
 
 	"example.com/fseventserver"
 )
-
 
 
 func main() {
@@ -29,10 +27,12 @@ func Mp3Converter(ctx context.Context) error {
     value := ctx.Value("request")
     req := value.(*fseventserver.Request)
     if req.Mimetype.Extension() != ".mp4" {
-        return errors.New("")
+        return fmt.Errorf("%w the was expecting %s files got %s", fseventserver.ErrHandlingRequest, "*.mp4", req.Mimetype.Extension())
     }
     name := strings.TrimSuffix(req.Path, req.Mimetype.Extension()) 
     name = fmt.Sprintf("%s.mp3", name) 
+    name = filepath.Base(name)
+    name = filepath.Join("/tmp", name)
     cmd := exec.Command("ffmpeg", "-i", req.Path, "-vn", name)
     return cmd.Run()
 }
@@ -42,7 +42,7 @@ func PDFConverter(ctx context.Context) error {
     req := value.(*fseventserver.Request)
     fmt.Println(req.Mimetype.Extension())
     if req.Mimetype.Extension() != ".md" {
-        return errors.New("")
+        return fmt.Errorf("%w the was expecting %s files got %s", fseventserver.ErrHandlingRequest, "*.md", req.Mimetype.Extension())
     }
     name := strings.TrimSuffix(req.Path, req.Mimetype.Extension()) 
     name = filepath.Base(fmt.Sprintf("%s.pdf", name))
@@ -55,7 +55,7 @@ func JSONPretty(ctx context.Context) error {
     value := ctx.Value("request")
     req := value.(*fseventserver.Request)
     if req.Mimetype.Extension() != ".json" {
-        return errors.New("")
+        return fmt.Errorf("%w the was expecting %s files got %s", fseventserver.ErrHandlingRequest, "*.json", req.Mimetype.Extension())
     }
     name := strings.TrimSuffix(req.Path, req.Mimetype.Extension()) 
     name = filepath.Base(fmt.Sprintf("%s.pretty%s", name, req.Mimetype.Extension()))
@@ -73,15 +73,6 @@ func JSONPretty(ctx context.Context) error {
 
     if err = cmd.Run(); err != nil {
         return fmt.Errorf("cannot run command %s (error: %s)", cmd, err) 
-    }
-    return nil
-}
-
-func MailSender(ctx context.Context) error {
-    value := ctx.Value("request")
-    req := value.(*fseventserver.Request)
-    if req.Mimetype.Extension() != ".xlsx" {
-        return errors.New("")
     }
     return nil
 }
