@@ -46,15 +46,15 @@ type ErrorHandler interface {
 }
 
 type Request struct {
+	ID           int64
 	Path         string
 	Size         int64
 	IsDir        bool
 	Mode         fs.FileMode
-	Mimetype     *MIME
+	Mimetype     MIME
 	Action       fsnotify.Op
 	LastModified time.Time
 	Date         time.Time
-	Hostname     string
 	Timeout      time.Duration
 }
 
@@ -63,15 +63,15 @@ type MIME struct {
 	extension string
 }
 
-func (self *MIME) Extension() string {
+func (self MIME) Extension() string {
 	return self.extension
 }
 
-func (self *MIME) String() string {
+func (self MIME) String() string {
 	return self.mime
 }
 
-func (self *MIME) Is(mType string) bool {
+func (self MIME) Is(mType string) bool {
 	// Parsing is needed because some detected MIME types contain parameters
 	// that need to be stripped for the comparison.
 	mType, _, _ = mime.ParseMediaType(mType)
@@ -264,7 +264,7 @@ func (self *Server) watch(red io.Reader) error {
 			// the events channel is closed, we cannot receive
 			// the event anymore, end the goroutine
 			if !ok {
-				panic(ErrInternalError)
+				return nil
 			}
 
 			// NOTE: file creating is followed by multiple writes events
@@ -275,6 +275,9 @@ func (self *Server) watch(red io.Reader) error {
 
 			ctx, cancel, err := self.makeContext(event)
 
+			// FIXME: don't do that, otherwise the the main goroutine will deadlock itself
+			// by trying to write in an unbuffered channel that reader counter part in the same goroutine
+			// i am thinking of using a dedicated channel for error handling, is it good idea ?
 			if err != nil {
 				self.watcher.Errors <- err
 				continue
@@ -293,7 +296,6 @@ func (self *Server) watch(red io.Reader) error {
 				}
 
 				if err := handler.ServeFSEvent(ctx); err != nil {
-					//self.Logger.Error(fmt.Sprint(err))
 					self.watcher.Errors <- err
 				}
 			}
@@ -302,7 +304,7 @@ func (self *Server) watch(red io.Reader) error {
 			// the error channel is closed, we cannot receive
 			// the errors anymore, end the goroutine
 			if !ok {
-				panic(ErrInternalError)
+				return nil
 			}
 			errHandler := self.ErrorHandler
 			if errHandler == nil {
@@ -326,48 +328,49 @@ func (self *Server) makeContext(evt fsnotify.Event) (context.Context, context.Ca
 
 func (self *Server) makeRequest(evt fsnotify.Event) (*Request, error) {
 	var err error
+	var fileStat fs.FileInfo
 
-	fileStat, err := os.Stat(evt.Name)
-	if err != nil {
-		return nil, err
+	if !evt.Op.Has(fsnotify.Rename) && !evt.Op.Has(fsnotify.Remove) {
+		fileStat, err = os.Stat(evt.Name)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	hostname, err := os.Hostname()
-	if err != nil {
-		return nil, err
-	}
-
-	// try content based file detection
-	var mType *MIME
-	if !fileStat.IsDir() {
+	ext := filepath.Ext(evt.Name)
+	mType := MIME{extension: ext, mime: mime.TypeByExtension(ext)}
+	if fileStat != nil && !fileStat.IsDir() {
+		// perform mimetype negociation using `magic number`(https://en.wikipedia.org/wiki/Magic_number_(programming)#Magic_numbers_in_files)
+		// since it is more accurate
 		if value, err := mimetype.DetectFile(evt.Name); err == nil {
-			mType = &MIME{extension: value.Extension(), mime: value.String()}
-		} else {
-			// fallback to extension based detection
-			ext := filepath.Ext(evt.Name)
-			mType = &MIME{extension: ext, mime: mime.TypeByExtension(ext)}
+			mType.extension = value.Extension()
+			mType.mime = value.String()
+		}
+		// text/plain is a broad mimetype, sometimes markdown, html, ...
+		// are all referenced as text files by magic number based mimetype
+		// negociator, because usually text files do not use a magic number
+		// so that they can be indentified uniquely so fallback do detection by extension
+		if mType.Is("text/plain") && mType.extension != "" {
+			mType.mime = mime.TypeByExtension(mType.extension)
 		}
 	}
 
-	// text/plain is broad mimetype, it includes many other mimetypes
-	// so fallback to extension based file detection
-	if mType != nil && mType.Is("text/plain") {
-		if ext := filepath.Ext(evt.Name); ext != "" {
-			mType = &MIME{extension: ext, mime: mime.TypeByExtension(ext)}
-		}
-	}
-
-	return &Request{
+	req := &Request{
 		Path:         evt.Name,
-		Size:         fileStat.Size(),
-		IsDir:        fileStat.IsDir(),
-		Mode:         fileStat.Mode(),
 		Mimetype:     mType,
 		Action:       evt.Op,
-		LastModified: fileStat.ModTime(),
 		Date:         time.Now(),
-		Hostname:     hostname,
-	}, nil
+		LastModified: time.Now(),
+	}
+
+	if fileStat != nil {
+		req.Size = fileStat.Size()
+		req.IsDir = fileStat.IsDir()
+		req.Mode = fileStat.Mode()
+		req.LastModified = fileStat.ModTime()
+	}
+
+	return req, nil
 }
 
 func (self *Server) printWatchList(items []string) {
