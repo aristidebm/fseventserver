@@ -9,14 +9,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	"example.com/fseventserver"
+	fsevt "example.com/fseventserver"
 	"github.com/fsnotify/fsnotify"
 )
 
 
 func main() {
-    fseventserver.HandleFunc("~/Downloads/*.mp4", Mp3Converter)
-    log.Fatal(fseventserver.ListenAndServe("~/Downloads", nil))
+    fsevt.Handle("~/Downloads/*.mp4", fsevt.Use(fsevt.HandlerFunc(Mp3Converter), fsevt.LoggingMiddleware))
+    log.Fatal(fsevt.ListenAndServe("~/Downloads", nil))
 }
 
 func Mp3Converter(ctx context.Context) error {
@@ -24,12 +24,10 @@ func Mp3Converter(ctx context.Context) error {
 
     value := ctx.Value("request")
 
-    req := value.(*fseventserver.Request)
-    
-    logger.Info(fmt.Sprintf("receive the request %+v", req))
+    req := value.(*fsevt.Request)
     
     if !req.Action.Has(fsnotify.Create) || !req.Mimetype.Is("video/mp4") {
-        logger.Warn(fmt.Sprintf("%s: %+v", fseventserver.ErrHandlingRequest.Error(), req))
+        logger.Warn(fmt.Sprintf("%s: %+v", fsevt.ErrHandlingRequest.Error(), req))
         return nil
     }
 

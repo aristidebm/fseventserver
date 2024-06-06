@@ -41,6 +41,8 @@ type Handler interface {
 	ServeFSEvent(ctx context.Context) error
 }
 
+type Middleware func(Handler) Handler
+
 type ErrorHandler interface {
 	HandleError(err error)
 }
@@ -53,7 +55,7 @@ type Request struct {
 	Mode         fs.FileMode
 	Mimetype     MIME
 	Action       fsnotify.Op
-	LastModified time.Time
+	LastModified int64
 	Date         time.Time
 	Timeout      time.Duration
 }
@@ -360,14 +362,14 @@ func (self *Server) makeRequest(evt fsnotify.Event) (*Request, error) {
 		Mimetype:     mType,
 		Action:       evt.Op,
 		Date:         time.Now(),
-		LastModified: time.Now(),
+		LastModified: time.Now().UnixNano(),
 	}
 
 	if fileStat != nil {
 		req.Size = fileStat.Size()
 		req.IsDir = fileStat.IsDir()
 		req.Mode = fileStat.Mode()
-		req.LastModified = fileStat.ModTime()
+		req.LastModified = fileStat.ModTime().UnixNano()
 	}
 
 	return req, nil
